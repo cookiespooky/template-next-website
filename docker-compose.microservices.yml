@@ -1,0 +1,316 @@
+
+# Microservices Architecture Docker Compose
+version: '3.8'
+
+services:
+  # PostgreSQL Database for all services
+  postgres:
+    image: postgres:15-alpine
+    container_name: course-platform-postgres
+    environment:
+      POSTGRES_DB: course_platform
+      POSTGRES_USER: postgres
+# CHANGE THIS TO: Use strong password from .env file
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      POSTGRES_MULTIPLE_DATABASES: course_platform,payment_service,admin_backend,blog_backend
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh
+      - ./scripts/postgres.conf:/etc/postgresql/postgresql.conf
+    networks:
+      - course-platform
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: course-platform-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./scripts/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - course-platform
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Main Course Platform Website
+  website:
+    build:
+      context: ./app
+      dockerfile: ../Dockerfile
+    container_name: course-platform-website
+    environment:
+      - NODE_ENV=production
+# CHANGE THIS TO: Your complete PostgreSQL connection string
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/course_platform
+# CHANGE THIS TO: Your main website URL (with https://)
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+# CHANGE THIS TO: A strong NextAuth secret (generate with: openssl rand -base64 64)
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-nextauth-secret}
+      - PAYMENT_SERVICE_URL=http://payment-service:3001
+# CHANGE THIS TO: Your Redis connection URL (local: redis://localhost:6379)
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    networks:
+      - course-platform
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    volumes:
+      - website_uploads:/app/uploads
+
+  # Payment Service (YooKassa Integration)
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    container_name: course-platform-payment-service
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+# CHANGE THIS TO: Your complete PostgreSQL connection string
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/payment_service
+# CHANGE THIS TO: A strong JWT secret key (generate with: openssl rand -base64 64)
+      - JWT_SECRET=${JWT_SECRET:-payment-jwt-secret}
+# CHANGE THIS TO: Your YooKassa Shop ID (get from: https://yookassa.ru/my/shop/integration)
+      - YOOKASSA_SHOP_ID=${YOOKASSA_SHOP_ID}
+# CHANGE THIS TO: Your YooKassa Secret Key (get from: https://yookassa.ru/my/shop/integration)
+      - YOOKASSA_SECRET_KEY=${YOOKASSA_SECRET_KEY}
+# CHANGE THIS TO: Your YooKassa Webhook Secret (set in YooKassa dashboard)
+      - YOOKASSA_WEBHOOK_SECRET=${YOOKASSA_WEBHOOK_SECRET}
+      - MAIN_APP_URL=http://website:3000
+# CHANGE THIS TO: A strong internal webhook secret (generate with: openssl rand -base64 32)
+      - INTERNAL_WEBHOOK_SECRET=${INTERNAL_WEBHOOK_SECRET:-internal-secret}
+# CHANGE THIS TO: Comma-separated list of allowed origins for CORS
+      - ALLOWED_ORIGINS=http://localhost:3000,http://website:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - course-platform
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    volumes:
+      - payment_logs:/app/logs
+
+  # Admin Backend Service
+  admin-backend:
+    build:
+      context: ./services/admin-backend
+      dockerfile: Dockerfile
+    container_name: course-platform-admin-backend
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+# CHANGE THIS TO: Your complete PostgreSQL connection string
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/admin_backend
+# CHANGE THIS TO: A strong JWT secret key (generate with: openssl rand -base64 64)
+      - JWT_SECRET=${JWT_SECRET:-admin-jwt-secret}
+# CHANGE THIS TO: A strong session secret (generate with: openssl rand -base64 64)
+      - SESSION_SECRET=${SESSION_SECRET:-admin-session-secret}
+# CHANGE THIS TO: Your Redis connection URL (local: redis://localhost:6379)
+      - REDIS_URL=redis://redis:6379
+# CHANGE THIS TO: Your SMTP server hostname (Gmail: smtp.gmail.com, Outlook: smtp-mail.outlook.com)
+      - SMTP_HOST=${SMTP_HOST}
+# CHANGE THIS TO: Your SMTP port (Gmail: 587, Outlook: 587, SSL: 465)
+      - SMTP_PORT=${SMTP_PORT:-587}
+# CHANGE THIS TO: Your email address for sending emails
+      - SMTP_USER=${SMTP_USER}
+# CHANGE THIS TO: Your email app password (Gmail: generate at https://myaccount.google.com/apppasswords)
+      - SMTP_PASS=${SMTP_PASS}
+# CHANGE THIS TO: The "from" email address for outgoing emails
+      - SMTP_FROM=${SMTP_FROM:-noreply@courseplatform.com}
+# CHANGE THIS TO: Your admin panel URL (with https://)
+      - ADMIN_FRONTEND_URL=http://localhost:3003
+# CHANGE THIS TO: Comma-separated list of allowed origins for CORS
+      - ALLOWED_ORIGINS=http://localhost:3003,http://admin-frontend:3003
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - course-platform
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    volumes:
+      - admin_logs:/app/logs
+      - admin_uploads:/app/uploads
+
+  # Admin Frontend Service
+  admin-frontend:
+    build:
+      context: ./services/admin-frontend/app
+      dockerfile: ../../Dockerfile
+    container_name: course-platform-admin-frontend
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_ADMIN_API_URL=http://localhost:3002/api
+    ports:
+      - "3003:3003"
+    depends_on:
+      - admin-backend
+    networks:
+      - course-platform
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Blog Backend Service
+  blog-backend:
+    build:
+      context: ./services/blog-backend
+      dockerfile: Dockerfile
+    container_name: course-platform-blog-backend
+    environment:
+      - NODE_ENV=production
+      - PORT=3004
+# CHANGE THIS TO: Your complete PostgreSQL connection string
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/blog_backend
+# CHANGE THIS TO: A strong JWT secret key (generate with: openssl rand -base64 64)
+      - JWT_SECRET=${JWT_SECRET:-blog-jwt-secret}
+# CHANGE THIS TO: A strong session secret (generate with: openssl rand -base64 64)
+      - SESSION_SECRET=${SESSION_SECRET:-blog-session-secret}
+# CHANGE THIS TO: Your Redis connection URL (local: redis://localhost:6379)
+      - REDIS_URL=redis://redis:6379
+# CHANGE THIS TO: Your SMTP server hostname (Gmail: smtp.gmail.com, Outlook: smtp-mail.outlook.com)
+      - SMTP_HOST=${SMTP_HOST}
+# CHANGE THIS TO: Your SMTP port (Gmail: 587, Outlook: 587, SSL: 465)
+      - SMTP_PORT=${SMTP_PORT:-587}
+# CHANGE THIS TO: Your email address for sending emails
+      - SMTP_USER=${SMTP_USER}
+# CHANGE THIS TO: Your email app password (Gmail: generate at https://myaccount.google.com/apppasswords)
+      - SMTP_PASS=${SMTP_PASS}
+# CHANGE THIS TO: The "from" email address for outgoing emails
+      - SMTP_FROM=${SMTP_FROM:-noreply@courseplatform.com}
+# CHANGE THIS TO: Your blog URL (with https://)
+      - BLOG_FRONTEND_URL=http://localhost:3005
+# CHANGE THIS TO: Your main website URL (with https://)
+      - MAIN_SITE_URL=http://localhost:3000
+      - SITE_NAME=Course Platform Blog
+      - SITE_DESCRIPTION=Latest insights and tutorials from our course platform
+      - SITE_URL=http://localhost:3005
+# CHANGE THIS TO: Comma-separated list of allowed origins for CORS
+      - ALLOWED_ORIGINS=http://localhost:3005,http://localhost:3000,http://blog-frontend:3005
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - course-platform
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    volumes:
+      - blog_logs:/app/logs
+      - blog_uploads:/app/uploads
+
+  # Blog Frontend Service
+  blog-frontend:
+    build:
+      context: ./services/blog-frontend/app
+      dockerfile: ../../Dockerfile
+    container_name: course-platform-blog-frontend
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_BLOG_API_URL=http://localhost:3004/api
+      - NEXT_PUBLIC_SITE_URL=http://localhost:3005
+      - NEXT_PUBLIC_GA_ID=${GOOGLE_ANALYTICS_ID}
+      - NEXT_PUBLIC_FB_PIXEL_ID=${FACEBOOK_PIXEL_ID}
+# CHANGE THIS TO: Your Microsoft Clarity Project ID (get from: https://clarity.microsoft.com/)
+      - NEXT_PUBLIC_CLARITY_ID=${CLARITY_ID}
+    ports:
+      - "3005:3005"
+    depends_on:
+      - blog-backend
+    networks:
+      - course-platform
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Nginx API Gateway and Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: course-platform-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/microservices.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/common.conf:/etc/nginx/conf.d/common.conf
+      - ./ssl:/etc/nginx/ssl
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - website
+      - payment-service
+      - admin-backend
+      - admin-frontend
+      - blog-backend
+      - blog-frontend
+    networks:
+      - course-platform
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  website_uploads:
+  payment_logs:
+  admin_logs:
+  admin_uploads:
+  blog_logs:
+  blog_uploads:
+
+networks:
+  course-platform:
+    driver: bridge

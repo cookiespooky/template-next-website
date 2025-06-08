@@ -1,0 +1,355 @@
+#cloud-config
+
+# Course Platform Microservices Cloud-Init Script
+# This script automatically sets up a VPS with the complete microservices architecture
+
+# Update system packages
+package_update: true
+package_upgrade: true
+
+# Install required packages
+packages:
+  - curl
+  - wget
+  - git
+  - docker.io
+  - docker-compose
+  - nginx
+  - certbot
+  - python3-certbot-nginx
+  - ufw
+  - fail2ban
+  - htop
+  - vim
+  - unzip
+
+# Create users
+users:
+  - name: courseplatform
+    groups: docker, sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDJihlyzH+ajz5Wk7J9vE3Vds6hmuxjiUpfohebDQwknFtEzgVoQaSvLAAeOQUVUfYDuqYjPSLayrPEL1IG3Nj/YPTdFYlGhbqo6s85ZlL99TDOAu2fpMUDfklfpgdtMKmEHs6/nQan1rkfu/GLgyKMmi8D/XXFtlqVah3VE8WrepnsJ2hVxtpKKHtfrTqruTDgNou1MeYvuWMKTYcYjrzK0xPZ0FrsaxnmF1cVqi9EmahU+eG9h/7HCtmrZzam/5hR0e2e18Nd3Om2H7Thq/d1zvCIuTinR5x0GPhNueCsp4bsPPUbuga7eA/AuJq2uH/AZJU7ld6FXZIqpBa/OaU62KQAd2DdrclA4iOWiKL3X9Mgj8wqVaX25sVuOZ4A+ThHpN9dNY6eAdX/LVoHQijUfH/JZyPcYu0hM2GotPm4VcK1GgMI1yyTFCqElJM3zFChinoRSbzKeA5cjUYYRFXPBlMMZUpGHDQHWEXuv8JJmHWtsWF5jUp1euw+3gYB8JXFbip8KEaCa3yGB1h0KoJl/KEUFG0vGh6PeNH5GAc2L8yDw4w6K0IvN3KYOfbOBWnRwe8yh1DpOa/LvmbtjSU6DnYyo9X/nkFRPzfhlv52NcaKuzGWcvvyPeVEhQuf51EK2VZ4pSWvUoiFTZUjYi3spB3w9Tiox1YMhFjBlMLFYw== ant.angst@yandex.ru
+
+# Configure firewall
+runcmd:
+  # Configure UFW firewall
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow ssh
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+  # Configure fail2ban
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+
+  # Start and enable Docker
+  - systemctl enable docker
+  - systemctl start docker
+  - usermod -aG docker courseplatform
+
+  # Create application directory
+  - mkdir -p /opt/courseplatform
+  - chown courseplatform:courseplatform /opt/courseplatform
+
+  # Clone the repository (replace with your actual repository)
+  - cd /opt/courseplatform
+  - git clone https://github.com/your-org/course-shop-platform.git .
+  - chown -R courseplatform:courseplatform /opt/courseplatform
+
+  # Create environment file
+  - |
+    cat > /opt/courseplatform/.env << 'EOF'
+    # Database
+    # CHANGE THIS TO: A strong PostgreSQL password (generate with: openssl rand -base64 32)
+    POSTGRES_PASSWORD=secure_postgres_password_here
+    
+    # JWT Secrets
+    # CHANGE THIS TO: A strong JWT secret key (generate with: openssl rand -base64 64)
+    JWT_SECRET=secure_jwt_secret_here
+    # CHANGE THIS TO: A strong session secret (generate with: openssl rand -base64 64)
+    SESSION_SECRET=secure_session_secret_here
+    # CHANGE THIS TO: A strong NextAuth secret (generate with: openssl rand -base64 64)
+    NEXTAUTH_SECRET=secure_nextauth_secret_here
+    
+    # YooKassa Configuration
+    # CHANGE THIS TO: Your YooKassa Shop ID (get from: https://yookassa.ru/my/shop/integration)
+    YOOKASSA_SHOP_ID=your_shop_id
+    # CHANGE THIS TO: Your YooKassa Secret Key (get from: https://yookassa.ru/my/shop/integration)
+    YOOKASSA_SECRET_KEY=your_secret_key
+    # CHANGE THIS TO: Your YooKassa Webhook Secret (set in YooKassa dashboard)
+    YOOKASSA_WEBHOOK_SECRET=your_webhook_secret
+    
+    # Internal Communication
+    # CHANGE THIS TO: A strong internal webhook secret (generate with: openssl rand -base64 32)
+    INTERNAL_WEBHOOK_SECRET=secure_internal_webhook_secret
+    
+    # Email Configuration
+    # CHANGE THIS TO: Your SMTP server hostname (Gmail: smtp.gmail.com, Outlook: smtp-mail.outlook.com)
+    SMTP_HOST=smtp.gmail.com
+    # CHANGE THIS TO: Your SMTP port (Gmail: 587, Outlook: 587, SSL: 465)
+    SMTP_PORT=587
+    # CHANGE THIS TO: Your email address for sending emails
+    SMTP_USER=your_email@gmail.com
+    # CHANGE THIS TO: Your email app password (Gmail: generate at https://myaccount.google.com/apppasswords)
+    SMTP_PASS=your_app_password
+    # CHANGE THIS TO: The "from" email address for outgoing emails
+    SMTP_FROM=noreply@courseplatform.com
+    
+    # URLs (update with your domain)
+    # CHANGE THIS TO: Your main website URL (with https://)
+    NEXTAUTH_URL=https://courseplatform.com
+    
+    # Analytics
+    # CHANGE THIS TO: Your Google Analytics 4 Measurement ID (get from: https://analytics.google.com/)
+    GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX
+    # CHANGE THIS TO: Your Facebook Pixel ID (get from: https://business.facebook.com/events_manager)
+    FACEBOOK_PIXEL_ID=123456789
+    # CHANGE THIS TO: Your Microsoft Clarity Project ID (get from: https://clarity.microsoft.com/)
+    CLARITY_ID=abcdefghij
+    
+    # SSL Email for Let's Encrypt
+    # CHANGE THIS TO: Your email for SSL certificate notifications (Let's Encrypt)
+    SSL_EMAIL=admin@courseplatform.com
+    
+    # Domain
+    # CHANGE THIS TO: Your actual domain name (without https://)
+    DOMAIN=courseplatform.com
+    EOF
+
+  # Set proper permissions for environment file
+  - chmod 600 /opt/courseplatform/.env
+  - chown courseplatform:courseplatform /opt/courseplatform/.env
+
+  # Create SSL directory
+  - mkdir -p /opt/courseplatform/ssl
+  - chown courseplatform:courseplatform /opt/courseplatform/ssl
+
+  # Create logs directory
+  - mkdir -p /opt/courseplatform/logs/nginx
+  - chown -R courseplatform:courseplatform /opt/courseplatform/logs
+
+  # Install Docker Compose (latest version)
+  - curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  - chmod +x /usr/local/bin/docker-compose
+
+  # Create systemd service for the application
+  - |
+    cat > /etc/systemd/system/courseplatform.service << 'EOF'
+    [Unit]
+    Description=Course Platform Microservices
+    Requires=docker.service
+    After=docker.service
+    
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    WorkingDirectory=/opt/courseplatform
+    ExecStart=/usr/local/bin/docker-compose -f docker-compose.microservices.yml up -d
+    ExecStop=/usr/local/bin/docker-compose -f docker-compose.microservices.yml down
+    TimeoutStartSec=0
+    User=courseplatform
+    Group=courseplatform
+    
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+  # Enable the service
+  - systemctl daemon-reload
+  - systemctl enable courseplatform.service
+
+  # Setup SSL certificates (Let's Encrypt)
+  - |
+    cat > /opt/courseplatform/setup-ssl.sh << 'EOF'
+    #!/bin/bash
+    
+    # Load environment variables
+    source /opt/courseplatform/.env
+    
+    # Stop nginx if running
+    systemctl stop nginx
+    
+    # Get SSL certificates
+    certbot certonly --standalone \
+      --email $SSL_EMAIL \
+      --agree-tos \
+      --no-eff-email \
+      -d $DOMAIN \
+      -d www.$DOMAIN \
+      -d admin.$DOMAIN \
+      -d blog.$DOMAIN
+    
+    # Copy certificates to application directory
+    cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem /opt/courseplatform/ssl/
+    cp /etc/letsencrypt/live/$DOMAIN/privkey.pem /opt/courseplatform/ssl/
+    
+    # Set proper permissions
+    chown courseplatform:courseplatform /opt/courseplatform/ssl/*
+    chmod 600 /opt/courseplatform/ssl/*
+    
+    # Setup auto-renewal
+    echo "0 12 * * * /usr/bin/certbot renew --quiet --deploy-hook 'systemctl reload nginx'" | crontab -
+    EOF
+
+  - chmod +x /opt/courseplatform/setup-ssl.sh
+
+  # Create database initialization script
+  - |
+    cat > /opt/courseplatform/init-databases.sh << 'EOF'
+    #!/bin/bash
+    
+    # Wait for services to be ready
+    sleep 30
+    
+    # Run database migrations for each service
+    docker-compose -f docker-compose.microservices.yml exec -T website npm run db:push
+    docker-compose -f docker-compose.microservices.yml exec -T payment-service npm run db:push
+    docker-compose -f docker-compose.microservices.yml exec -T admin-backend npm run db:push
+    docker-compose -f docker-compose.microservices.yml exec -T blog-backend npm run db:push
+    
+    # Seed databases
+    docker-compose -f docker-compose.microservices.yml exec -T website npm run db:seed
+    docker-compose -f docker-compose.microservices.yml exec -T payment-service npm run db:seed
+    docker-compose -f docker-compose.microservices.yml exec -T admin-backend npm run db:seed
+    docker-compose -f docker-compose.microservices.yml exec -T blog-backend npm run db:seed
+    EOF
+
+  - chmod +x /opt/courseplatform/init-databases.sh
+
+  # Create backup script
+  - |
+    cat > /opt/courseplatform/backup.sh << 'EOF'
+    #!/bin/bash
+    
+    BACKUP_DIR="/opt/courseplatform/backups"
+    DATE=$(date +%Y%m%d_%H%M%S)
+    
+    mkdir -p $BACKUP_DIR
+    
+    # Backup databases
+    docker-compose -f docker-compose.microservices.yml exec -T postgres pg_dumpall -U postgres > $BACKUP_DIR/database_backup_$DATE.sql
+    
+    # Backup uploads
+    tar -czf $BACKUP_DIR/uploads_backup_$DATE.tar.gz uploads/
+    
+    # Keep only last 7 days of backups
+    find $BACKUP_DIR -name "*.sql" -mtime +7 -delete
+    find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
+    
+    echo "Backup completed: $DATE"
+    EOF
+
+  - chmod +x /opt/courseplatform/backup.sh
+
+  # Setup daily backups
+  - echo "0 2 * * * /opt/courseplatform/backup.sh" | crontab -u courseplatform -
+
+  # Create monitoring script
+  - |
+    cat > /opt/courseplatform/monitor.sh << 'EOF'
+    #!/bin/bash
+    
+    # Check if all services are running
+    services=("website" "payment-service" "admin-backend" "admin-frontend" "blog-backend" "blog-frontend" "postgres" "redis" "nginx")
+    
+    for service in "${services[@]}"; do
+      if ! docker-compose -f docker-compose.microservices.yml ps | grep -q "$service.*Up"; then
+        echo "Service $service is down, restarting..."
+        docker-compose -f docker-compose.microservices.yml restart $service
+      fi
+    done
+    EOF
+
+  - chmod +x /opt/courseplatform/monitor.sh
+
+  # Setup monitoring cron job (every 5 minutes)
+  - echo "*/5 * * * * /opt/courseplatform/monitor.sh" | crontab -u courseplatform -
+
+  # Start the application
+  - cd /opt/courseplatform
+  - sudo -u courseplatform docker-compose -f docker-compose.microservices.yml pull
+  - sudo -u courseplatform docker-compose -f docker-compose.microservices.yml up -d
+
+  # Wait for services and initialize databases
+  - sleep 60
+  - sudo -u courseplatform /opt/courseplatform/init-databases.sh
+
+  # Setup SSL (comment out if you don't have a domain yet)
+  # - /opt/courseplatform/setup-ssl.sh
+
+# Write additional configuration files
+write_files:
+  - path: /opt/courseplatform/README.md
+    content: |
+      # Course Platform Microservices
+      
+      This server has been automatically configured with the Course Platform microservices architecture.
+      
+      ## Services
+      
+      - **Main Website**: http://your-domain.com (port 3000)
+      - **Admin Panel**: http://admin.your-domain.com (port 3003)
+      - **Blog**: http://blog.your-domain.com (port 3005)
+      - **Payment Service**: Internal service (port 3001)
+      - **Admin Backend**: Internal service (port 3002)
+      - **Blog Backend**: Internal service (port 3004)
+      
+      ## Management Commands
+      
+      ```bash
+      # View service status
+      docker-compose -f docker-compose.microservices.yml ps
+      
+      # View logs
+      docker-compose -f docker-compose.microservices.yml logs -f [service_name]
+      
+      # Restart services
+      systemctl restart courseplatform
+      
+      # Manual backup
+      /opt/courseplatform/backup.sh
+      
+      # Setup SSL certificates
+      /opt/courseplatform/setup-ssl.sh
+      ```
+      
+      ## Configuration
+      
+      Edit `/opt/courseplatform/.env` to configure environment variables.
+      
+      ## Logs
+      
+      Service logs are available in `/opt/courseplatform/logs/`
+      
+      ## Backups
+      
+      Automatic daily backups are stored in `/opt/courseplatform/backups/`
+    owner: courseplatform:courseplatform
+    permissions: '0644'
+
+# Final message
+final_message: |
+  Course Platform Microservices installation completed!
+  
+  The system is now running with the following services:
+  - Main Website (port 3000)
+  - Payment Service (port 3001) 
+  - Admin Backend (port 3002)
+  - Admin Frontend (port 3003)
+  - Blog Backend (port 3004)
+  - Blog Frontend (port 3005)
+  - PostgreSQL Database (port 5432)
+  - Redis Cache (port 6379)
+  - Nginx Load Balancer (port 80/443)
+  
+  Next steps:
+  1. Configure your domain DNS to point to this server
+  2. Update the .env file with your actual credentials
+  3. Run the SSL setup script: /opt/courseplatform/setup-ssl.sh
+  4. Access the admin panel to configure your platform
+  
+  For more information, see /opt/courseplatform/README.md

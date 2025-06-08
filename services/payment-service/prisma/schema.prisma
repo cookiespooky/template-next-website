@@ -1,0 +1,110 @@
+
+// Payment Service Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Payment {
+  id                String   @id @default(cuid())
+  orderId           String   @unique
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("RUB")
+  status            PaymentStatus @default(PENDING)
+  paymentMethod     String?
+  yookassaPaymentId String?  @unique
+  yookassaStatus    String?
+  description       String?
+  metadata          Json?
+  
+  // Customer information
+  customerEmail     String?
+  customerPhone     String?
+  customerName      String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  paidAt            DateTime?
+  cancelledAt       DateTime?
+  
+  // Relations
+  refunds           Refund[]
+  webhookEvents     WebhookEvent[]
+  
+  @@map("payments")
+}
+
+model Refund {
+  id                String   @id @default(cuid())
+  paymentId         String
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("RUB")
+  status            RefundStatus @default(PENDING)
+  yookassaRefundId  String?  @unique
+  reason            String?
+  description       String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  processedAt       DateTime?
+  
+  // Relations
+  payment           Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  
+  @@map("refunds")
+}
+
+model WebhookEvent {
+  id                String   @id @default(cuid())
+  paymentId         String?
+  eventType         String
+  eventData         Json
+  processed         Boolean  @default(false)
+  processingError   String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  processedAt       DateTime?
+  
+  // Relations
+  payment           Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  
+  @@map("webhook_events")
+}
+
+model PaymentProvider {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  isActive          Boolean  @default(true)
+  configuration     Json
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("payment_providers")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}

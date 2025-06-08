@@ -1,0 +1,276 @@
+
+// Admin Backend Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  password          String
+  firstName         String
+  lastName          String
+  role              AdminRole @default(ADMIN)
+  isActive          Boolean  @default(true)
+  lastLoginAt       DateTime?
+  emailVerified     Boolean  @default(false)
+  emailVerificationToken String?
+  passwordResetToken String?
+  passwordResetExpires DateTime?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  sessions          AdminSession[]
+  auditLogs         AuditLog[]
+  createdCourses    Course[] @relation("CourseCreatedBy")
+  updatedCourses    Course[] @relation("CourseUpdatedBy")
+  createdCategories Category[] @relation("CategoryCreatedBy")
+  updatedCategories Category[] @relation("CategoryUpdatedBy")
+  
+  @@map("admin_users")
+}
+
+model AdminSession {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("admin_sessions")
+}
+
+model Course {
+  id                String   @id @default(cuid())
+  title             String
+  slug              String   @unique
+  description       String?
+  shortDescription  String?
+  content           String?
+  price             Decimal  @db.Decimal(10, 2)
+  discountPrice     Decimal? @db.Decimal(10, 2)
+  currency          String   @default("RUB")
+  duration          Int?     // in minutes
+  level             CourseLevel @default(BEGINNER)
+  status            CourseStatus @default(DRAFT)
+  isPublished       Boolean  @default(false)
+  isFeatured        Boolean  @default(false)
+  
+  // SEO
+  metaTitle         String?
+  metaDescription   String?
+  metaKeywords      String?
+  
+  // Media
+  thumbnailUrl      String?
+  videoUrl          String?
+  previewVideoUrl   String?
+  
+  // Content
+  requirements      String[]
+  whatYouWillLearn  String[]
+  targetAudience    String[]
+  
+  // Stats
+  enrollmentCount   Int      @default(0)
+  rating            Float?   @default(0)
+  reviewCount       Int      @default(0)
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  publishedAt       DateTime?
+  
+  // Relations
+  categoryId        String
+  instructorId      String
+  createdById       String
+  updatedById       String
+  
+  category          Category @relation(fields: [categoryId], references: [id])
+  instructor        Instructor @relation(fields: [instructorId], references: [id])
+  createdBy         AdminUser @relation("CourseCreatedBy", fields: [createdById], references: [id])
+  updatedBy         AdminUser @relation("CourseUpdatedBy", fields: [updatedById], references: [id])
+  lessons           Lesson[]
+  tags              CourseTag[]
+  
+  @@map("courses")
+}
+
+model Category {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  slug              String   @unique
+  description       String?
+  iconUrl           String?
+  color             String?
+  isActive          Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  
+  // SEO
+  metaTitle         String?
+  metaDescription   String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  createdById       String
+  updatedById       String
+  
+  createdBy         AdminUser @relation("CategoryCreatedBy", fields: [createdById], references: [id])
+  updatedBy         AdminUser @relation("CategoryUpdatedBy", fields: [updatedById], references: [id])
+  courses           Course[]
+  
+  @@map("categories")
+}
+
+model Instructor {
+  id                String   @id @default(cuid())
+  firstName         String
+  lastName          String
+  email             String   @unique
+  bio               String?
+  avatarUrl         String?
+  title             String?
+  company           String?
+  website           String?
+  socialLinks       Json?
+  isActive          Boolean  @default(true)
+  
+  // Stats
+  courseCount       Int      @default(0)
+  studentCount      Int      @default(0)
+  rating            Float?   @default(0)
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  courses           Course[]
+  
+  @@map("instructors")
+}
+
+model Lesson {
+  id                String   @id @default(cuid())
+  title             String
+  slug              String
+  description       String?
+  content           String?
+  videoUrl          String?
+  duration          Int?     // in minutes
+  sortOrder         Int      @default(0)
+  isPublished       Boolean  @default(false)
+  isFree            Boolean  @default(false)
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  courseId          String
+  course            Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  @@unique([courseId, slug])
+  @@map("lessons")
+}
+
+model Tag {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  slug              String   @unique
+  color             String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  courses           CourseTag[]
+  
+  @@map("tags")
+}
+
+model CourseTag {
+  courseId          String
+  tagId             String
+  
+  course            Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tag               Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  @@id([courseId, tagId])
+  @@map("course_tags")
+}
+
+model SiteSettings {
+  id                String   @id @default(cuid())
+  key               String   @unique
+  value             Json
+  description       String?
+  category          String   @default("general")
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("site_settings")
+}
+
+model AuditLog {
+  id                String   @id @default(cuid())
+  userId            String
+  action            String
+  resource          String
+  resourceId        String?
+  oldValues         Json?
+  newValues         Json?
+  ipAddress         String?
+  userAgent         String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  
+  // Relations
+  user              AdminUser @relation(fields: [userId], references: [id])
+  
+  @@map("audit_logs")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum CourseStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}

@@ -1,0 +1,309 @@
+// Course Shop Platform Schema
+// Production-ready e-commerce platform for online courses
+
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+    output = "/home/ubuntu/course-shop-platform/node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  password      String
+  role          UserRole @default(STUDENT)
+  avatar        String?
+  phone         String?
+  isVerified    Boolean  @default(false)
+  verificationToken String?
+  resetToken    String?
+  resetTokenExpiry DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  enrollments   Enrollment[]
+  orders        Order[]
+  reviews       Review[]
+  contactForms  ContactForm[]
+
+  @@map("users")
+}
+
+// Course Management with Vector Embeddings
+model Course {
+  id               String   @id @default(uuid())
+  name             String   // Required field from specification
+  description      String?  // Optional field from specification
+  document         String?  // Required field from specification
+  doc_expire       String?  // Required field from specification
+  hours            String?  // Required field from specification
+  for_whom         String?  // Required field from specification
+  for_whom_detailed String? // Required field from specification
+  price            Float?   // Required field from specification (double precision)
+  embedding        String? // Required vector field from specification (stored as JSON string)
+  
+  // Additional fields for enhanced functionality
+  title            String   // Display title
+  slug             String   @unique
+  shortDescription String?
+  duration         String?
+  hoursInt         Int?     // Integer version of hours for calculations
+  oldPrice         Float?
+  format           CourseFormat @default(ONLINE)
+  level            CourseLevel @default(BEGINNER)
+  type             CourseType @default(QUALIFICATION)
+  categoryId       String
+  category         Category @relation(fields: [categoryId], references: [id])
+  isPopular        Boolean @default(false)
+  isFeatured       Boolean @default(false)
+  isActive         Boolean @default(true)
+  features         String[]
+  certificate      String?
+  instructorId     String?
+  instructor       Instructor? @relation(fields: [instructorId], references: [id])
+  imageUrl         String?
+  videoUrl         String?
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  enrollments      Enrollment[]
+  orderItems       OrderItem[]
+  reviews          Review[]
+
+  @@map("courses")
+}
+
+// Course Categories
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  icon        String?
+  parentId    String?
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  courses     Course[]
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("categories")
+}
+
+// Course Instructors
+model Instructor {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  bio         String?
+  avatar      String?
+  experience  String?
+  education   String?
+  email       String?
+  phone       String?
+  isActive    Boolean @default(true)
+  courses     Course[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("instructors")
+}
+
+// User Course Enrollments
+model Enrollment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  status      EnrollmentStatus @default(ACTIVE)
+  progress    Float    @default(0) // 0-100 percentage
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  certificateUrl String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+// Order Management
+model Order {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      OrderStatus @default(PENDING)
+  totalAmount Float
+  currency    String      @default("RUB")
+  
+  // Customer information
+  customerName  String
+  customerEmail String
+  customerPhone String?
+  
+  // Billing address
+  billingAddress String?
+  billingCity    String?
+  billingZip     String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  items       OrderItem[]
+  payments    Payment[]
+
+  @@map("orders")
+}
+
+// Order Items
+model OrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quantity  Int    @default(1)
+  price     Float  // Price at time of purchase
+  createdAt DateTime @default(now())
+
+  @@map("order_items")
+}
+
+// Payment Management (YooKassa Integration)
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  // YooKassa specific fields
+  yookassaId      String?       @unique // YooKassa payment ID
+  status          PaymentStatus @default(PENDING)
+  amount          Float
+  currency        String        @default("RUB")
+  paymentMethod   String?       // card, yoo_money, etc.
+  
+  // Payment details
+  description     String?
+  metadata        Json?         // Additional YooKassa metadata
+  
+  // Timestamps
+  paidAt          DateTime?
+  cancelledAt     DateTime?
+  refundedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("payments")
+}
+
+// Course Reviews
+model Review {
+  id        String @id @default(cuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  rating    Int    // 1-5 stars
+  comment   String?
+  isApproved Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@map("reviews")
+}
+
+// Contact Form Submissions
+model ContactForm {
+  id        String @id @default(cuid())
+  userId    String?
+  user      User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  formType  String @default("general") // general, course_inquiry, support, etc.
+  status    ContactStatus @default(NEW)
+  
+  // Admin response
+  response  String?
+  respondedAt DateTime?
+  respondedBy String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("contact_forms")
+}
+
+// Enums
+enum UserRole {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum CourseFormat {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CourseType {
+  QUALIFICATION  // повышение квалификации
+  DIPLOMA       // диплом/переподготовка
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  SUSPENDED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  CANCELLED
+  REFUNDED
+  FAILED
+}
+
+enum ContactStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}

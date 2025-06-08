@@ -1,0 +1,98 @@
+
+# Development Environment Docker Compose
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: course-platform-postgres-dev
+    environment:
+      POSTGRES_DB: course_shop_platform_dev
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - course-platform-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_user -d course_shop_platform_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching (optional)
+  redis-dev:
+    image: redis:7-alpine
+    container_name: course-platform-redis-dev
+    ports:
+      - "6379:6379"
+    networks:
+      - course-platform-dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Next.js Application
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: course-platform-app-dev
+    environment:
+      - NODE_ENV=development
+# CHANGE THIS TO: Your complete PostgreSQL connection string
+      - DATABASE_URL=postgresql://dev_user:dev_password@postgres-dev:5432/course_shop_platform_dev
+# CHANGE THIS TO: Your main website URL (with https://)
+      - NEXTAUTH_URL=http://localhost:3000
+# CHANGE THIS TO: A strong NextAuth secret (generate with: openssl rand -base64 64)
+      - NEXTAUTH_SECRET=dev-secret-key-change-in-production
+# CHANGE THIS TO: Your Redis connection URL (local: redis://localhost:6379)
+      - REDIS_URL=redis://redis-dev:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    networks:
+      - course-platform-dev
+    volumes:
+      - ./app:/app:cached
+      - /app/node_modules
+      - /app/.next
+    command: ["npm", "run", "dev"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Reverse Proxy
+  nginx-dev:
+    image: nginx:alpine
+    container_name: course-platform-nginx-dev
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/dev.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/common.conf:/etc/nginx/conf.d/common.conf
+    depends_on:
+      - app-dev
+    networks:
+      - course-platform-dev
+
+volumes:
+  postgres_dev_data:
+
+networks:
+  course-platform-dev:
+    driver: bridge

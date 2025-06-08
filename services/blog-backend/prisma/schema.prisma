@@ -1,0 +1,239 @@
+
+// Blog Backend Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model BlogUser {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  password          String
+  firstName         String
+  lastName          String
+  role              BlogRole @default(EDITOR)
+  isActive          Boolean  @default(true)
+  lastLoginAt       DateTime?
+  emailVerified     Boolean  @default(false)
+  emailVerificationToken String?
+  passwordResetToken String?
+  passwordResetExpires DateTime?
+  
+  // Profile
+  bio               String?
+  avatarUrl         String?
+  website           String?
+  socialLinks       Json?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  sessions          BlogSession[]
+  posts             BlogPost[] @relation("PostAuthor")
+  comments          BlogComment[] @relation("CommentAuthor")
+  auditLogs         BlogAuditLog[]
+  
+  @@map("blog_users")
+}
+
+model BlogSession {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      BlogUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("blog_sessions")
+}
+
+model BlogPost {
+  id                String   @id @default(cuid())
+  title             String
+  slug              String   @unique
+  excerpt           String?
+  content           String
+  htmlContent       String?
+  status            PostStatus @default(DRAFT)
+  isPublished       Boolean  @default(false)
+  isFeatured        Boolean  @default(false)
+  
+  // SEO
+  metaTitle         String?
+  metaDescription   String?
+  metaKeywords      String?
+  
+  // Media
+  featuredImageUrl  String?
+  featuredImageAlt  String?
+  
+  // Stats
+  viewCount         Int      @default(0)
+  likeCount         Int      @default(0)
+  commentCount      Int      @default(0)
+  
+  // Reading time in minutes
+  readingTime       Int?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  publishedAt       DateTime?
+  
+  // Relations
+  authorId          String
+  categoryId        String?
+  
+  author            BlogUser @relation("PostAuthor", fields: [authorId], references: [id])
+  category          BlogCategory? @relation(fields: [categoryId], references: [id])
+  tags              BlogPostTag[]
+  comments          BlogComment[]
+  
+  @@map("blog_posts")
+}
+
+model BlogCategory {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  slug              String   @unique
+  description       String?
+  color             String?
+  isActive          Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  
+  // SEO
+  metaTitle         String?
+  metaDescription   String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  posts             BlogPost[]
+  
+  @@map("blog_categories")
+}
+
+model BlogTag {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  slug              String   @unique
+  color             String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  posts             BlogPostTag[]
+  
+  @@map("blog_tags")
+}
+
+model BlogPostTag {
+  postId            String
+  tagId             String
+  
+  post              BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag               BlogTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  @@id([postId, tagId])
+  @@map("blog_post_tags")
+}
+
+model BlogComment {
+  id                String   @id @default(cuid())
+  content           String
+  htmlContent       String?
+  status            CommentStatus @default(PENDING)
+  isApproved        Boolean  @default(false)
+  
+  // Guest comment fields
+  guestName         String?
+  guestEmail        String?
+  guestWebsite      String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  postId            String
+  authorId          String?
+  parentId          String?
+  
+  post              BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author            BlogUser? @relation("CommentAuthor", fields: [authorId], references: [id])
+  parent            BlogComment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies           BlogComment[] @relation("CommentReplies")
+  
+  @@map("blog_comments")
+}
+
+model BlogSettings {
+  id                String   @id @default(cuid())
+  key               String   @unique
+  value             Json
+  description       String?
+  category          String   @default("general")
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@map("blog_settings")
+}
+
+model BlogAuditLog {
+  id                String   @id @default(cuid())
+  userId            String
+  action            String
+  resource          String
+  resourceId        String?
+  oldValues         Json?
+  newValues         Json?
+  ipAddress         String?
+  userAgent         String?
+  
+  // Timestamps
+  createdAt         DateTime @default(now())
+  
+  // Relations
+  user              BlogUser @relation(fields: [userId], references: [id])
+  
+  @@map("blog_audit_logs")
+}
+
+enum BlogRole {
+  ADMIN
+  EDITOR
+  AUTHOR
+  CONTRIBUTOR
+}
+
+enum PostStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CommentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SPAM
+}
