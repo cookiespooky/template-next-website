@@ -10,8 +10,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 REMOTE_USER="${REMOTE_USER:-ubuntu}"
-REMOTE_HOST="${REMOTE_HOST:-your-server.com}"
-REMOTE_PATH="${REMOTE_PATH:-/var/www/course-platform}"
+REMOTE_HOST="${REMOTE_HOST:-5.129.223.137}"
+REMOTE_PATH="${REMOTE_PATH:-/home/courseplatform/course-shop-platform}"
 
 # Colors for output
 RED='\033[0;31m'

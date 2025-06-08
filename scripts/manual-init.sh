@@ -2,10 +2,20 @@
 
 set -e
 
-# === Настройки ===
 USERNAME="courseplatform"
-REPO_URL="https://github.com/cookiespooky/template-next-website.git"  # 🔁 ЗАМЕНИ НА СВОЙ
-APP_DIR="/home/$USERNAME/app"
+REPO_URL="https://github.com/cookiespooky/template-next-website.git"
+APP_DIR="/home/$USERNAME/course-shop-platform"
+SESSION_NAME="deploy_session"
+
+# === Установка пакетов ===
+echo "[INFO] Установка пакетов..."
+apt update && apt install -y \
+  git \
+  docker.io \
+  docker-compose \
+  ufw \
+  fail2ban \
+  tmux
 
 # === Создание пользователя ===
 if ! id "$USERNAME" &>/dev/null; then
@@ -17,16 +27,8 @@ else
   echo "[INFO] Пользователь $USERNAME уже существует"
 fi
 
-# === Установка пакетов ===
-echo "[INFO] Установка пакетов..."
-apt update && apt install -y \
-  git \
-  docker.io \
-  docker-compose \
-  ufw \
-  fail2ban
-
 # === Запуск и включение Docker ===
+echo "[INFO] Включаю и запускаю Docker..."
 systemctl enable docker
 systemctl start docker
 
@@ -38,10 +40,15 @@ ufw --force enable
 
 # === Клонирование репозитория ===
 echo "[INFO] Клонирую репозиторий в $APP_DIR..."
-su - $USERNAME -c "git clone $REPO_URL $APP_DIR"
+su - $USERNAME -c "git clone $REPO_URL $APP_DIR || true"
 
-# === Деплой приложения ===
-echo "[INFO] Запуск деплоя..."
-su - $USERNAME -c "cd $APP_DIR && ./scripts/deploy.sh prod --force"
+# === Запуск деплоя в tmux-сессии ===
+echo "[INFO] Запуск деплоя в tmux-сессии '$SESSION_NAME'..."
+su - $USERNAME -c "
+  tmux new-session -d -s $SESSION_NAME '
+    cd $APP_DIR && ./scripts/deploy.sh prod --force
+  '
+"
 
-echo "[✅] Готово! Приложение развернуто."
+echo "[✅] Готово! Деплой запущен в tmux-сессии '$SESSION_NAME'."
+echo "Чтобы подключиться: su - $USERNAME && tmux attach -t $SESSION_NAME"
