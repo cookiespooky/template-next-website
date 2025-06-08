@@ -9,8 +9,8 @@ set -e
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-REMOTE_USER="${REMOTE_USER:-ubuntu}"
-REMOTE_HOST="${REMOTE_HOST:-5.129.223.137}"
+REMOTE_USER="${REMOTE_USER:-courseplatform}"
+REMOTE_HOST="${REMOTE_HOST:-localhost}"
 REMOTE_PATH="${REMOTE_PATH:-/home/courseplatform/course-shop-platform}"
 
 # Colors for output
