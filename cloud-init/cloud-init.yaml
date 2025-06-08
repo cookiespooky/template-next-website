@@ -1,4 +1,5 @@
 #cloud-config
+---
 
 # Course Platform Microservices Cloud-Init Script
 # This script automatically sets up a VPS with the complete microservices architecture
@@ -57,7 +58,7 @@ runcmd:
 
   # Clone the repository (replace with your actual repository)
   - cd /opt/courseplatform
-  - git clone https://github.com/your-org/course-shop-platform.git .
+  - git clone https://github.com/cookiespooky/template-next-website.git .
   - chown -R courseplatform:courseplatform /opt/courseplatform
 
   # Create environment file
@@ -113,11 +114,11 @@ runcmd:
     
     # SSL Email for Let's Encrypt
     # CHANGE THIS TO: Your email for SSL certificate notifications (Let's Encrypt)
-    SSL_EMAIL=admin@courseplatform.com
+    SSL_EMAIL=ant.angst@yandex.ru
     
     # Domain
     # CHANGE THIS TO: Your actual domain name (without https://)
-    DOMAIN=courseplatform.com
+    DOMAIN=daodatacenter.ru
     EOF
 
   # Set proper permissions for environment file
@@ -291,9 +292,9 @@ write_files:
       
       ## Services
       
-      - **Main Website**: http://your-domain.com (port 3000)
-      - **Admin Panel**: http://admin.your-domain.com (port 3003)
-      - **Blog**: http://blog.your-domain.com (port 3005)
+      - **Main Website**: https://daodatacenter.ru (port 3000)
+      - **Admin Panel**: https://admin.daodatacenter.ru (port 3003)
+      - **Blog**: https://blog.daodatacenter.ru (port 3005)
       - **Payment Service**: Internal service (port 3001)
       - **Admin Backend**: Internal service (port 3002)
       - **Blog Backend**: Internal service (port 3004)
